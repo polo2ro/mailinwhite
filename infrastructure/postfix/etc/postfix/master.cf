@@ -1,0 +1,7 @@
+check_filter unix - n n - - pipe
+  flags=Rq user=postfix argv=/usr/local/bin/check_email.sh -f ${sender} -- ${recipient}
+
+hold unix - - n - - smtp
+  -o smtp_send_xforward_command=yes
+  -o disable_dns_lookups=yes
+  -o max_use=20

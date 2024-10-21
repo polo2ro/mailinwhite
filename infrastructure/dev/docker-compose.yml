@@ -1,0 +1,67 @@
+
+services:
+  app:
+    build:
+      context: ../../
+      dockerfile: infrastructure/app/Dockerfile
+    container_name: app
+    ports:
+      - "8081:8081"
+    networks:
+      - appnet
+
+  nginx:
+    image: nginx:1.27.2
+    container_name: nginx
+    volumes:
+      - ../../public:/var/www/html
+    ports:
+      - "8080:80"
+    depends_on:
+      - app
+    networks:
+      - appnet
+
+  postfix:
+    build:
+      context: ../../
+      dockerfile: infrastructure/postfix/Dockerfile
+    container_name: postfix
+    networks:
+      - appnet
+
+  mailcatcher:
+    image: jeanberu/mailcatcher:0.10.0
+    container_name: mailcatcher
+    ports:
+       - 8082:1080
+    networks:
+      - appnet
+
+  openldap:
+    image: bitnami/openldap:2.5.18
+    ports:
+      - '1389:1389'
+      - '1636:1636'
+    environment:
+      - LDAP_ADMIN_USERNAME=admin
+      - LDAP_ADMIN_PASSWORD=adminpassword
+      - LDAP_USERS=user01,user02
+      - LDAP_PASSWORDS=password1,password2
+    networks:
+      - appnet
+    volumes:
+      - 'contacts:/bitnami/openldap'
+
+  ldap-ui:
+    image: dnknth/ldap-ui:latest
+    networks:
+      - appnet
+      
+volumes:
+  contacts:
+    driver: local
+
+networks:
+  appnet:
+    driver: bridge
