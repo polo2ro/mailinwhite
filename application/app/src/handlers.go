@@ -8,9 +8,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// HelloHandler est un exemple de gestionnaire simple
-func HelloHandler(w http.ResponseWriter, r *http.Request) {
-	response := map[string]string{"message": "Bonjour, monde!"}
+func AcceptHandler(w http.ResponseWriter, r *http.Request) {
+	response := map[string]string{"message": "Accept"}
 	json.NewEncoder(w).Encode(response)
 }
 

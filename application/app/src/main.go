@@ -11,7 +11,7 @@ func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/contact/get/{uid}", getContactHandler).Methods("GET")
-	r.HandleFunc("/contact/accept", HelloHandler).Methods("POST")
+	r.HandleFunc("/contact/accept", AcceptHandler).Methods("POST")
 
 	log.Println("http://localhost:8081")
 	log.Fatal(http.ListenAndServe(":8081", r))

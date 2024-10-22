@@ -3,15 +3,11 @@ FROM golang:1.23.2 AS builder
 COPY application/postfix_hook /postfix_hook
 WORKDIR /postfix_hook
 RUN go mod download
-RUN go build -o ./app ./src
+RUN go build -o ./postfix_hook ./src
 
 
 FROM alpine:3.20.3
-
-COPY --from=builder /postfix_hook/app /
-
-WORKDIR /
-
+COPY --from=builder /postfix_hook/postfix_hook /
 RUN apk add --no-cache \
   libc6-compat \
   postfix \
@@ -19,9 +15,9 @@ RUN apk add --no-cache \
   supervisor
 
 COPY infrastructure/postfix/etc /etc
-COPY infrastructure/postfix/entrypoint.sh entrypoint.sh
+COPY infrastructure/postfix/entrypoint.sh /entrypoint.sh
 RUN chmod +x entrypoint.sh
-ENTRYPOINT entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 
 EXPOSE 25
 HEALTHCHECK CMD postfix status

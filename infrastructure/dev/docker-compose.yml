@@ -4,7 +4,7 @@ services:
     build:
       context: ../../
       dockerfile: infrastructure/app/Dockerfile
-    container_name: app
+    container_name: mailinwhite-app
     ports:
       - "8081:8081"
     networks:
@@ -12,7 +12,7 @@ services:
 
   nginx:
     image: nginx:1.27.2
-    container_name: nginx
+    container_name: mailinwhite-nginx
     volumes:
       - ../../public:/var/www/html
     ports:
@@ -26,13 +26,13 @@ services:
     build:
       context: ../../
       dockerfile: infrastructure/postfix/Dockerfile
-    container_name: postfix
+    container_name: mailinwhite-postfix
     networks:
       - appnet
 
   mailcatcher:
     image: jeanberu/mailcatcher:0.10.0
-    container_name: mailcatcher
+    container_name: mailinwhite-mailcatcher
     ports:
        - 8082:1080
     networks:
@@ -40,6 +40,7 @@ services:
 
   openldap:
     image: bitnami/openldap:2.5.18
+    container_name: mailinwhite-openldap
     ports:
       - '1389:1389'
       - '1636:1636'
@@ -55,6 +56,7 @@ services:
 
   ldap-ui:
     image: dnknth/ldap-ui:latest
+    container_name: mailinwhite-ldap-ui
     networks:
       - appnet
       

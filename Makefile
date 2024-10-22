@@ -17,6 +17,9 @@ run: ## Run the application
 build: ## Build the application.
 	$(DKC) build
 
+force-rebuild: ## Force rebuild all Docker images
+	DOCKER_BUILDKIT=0 $(DKC) build --no-cache
+
 down: ## Down all containers and volumes
 	$(DKC) kill
 	$(DKC) down -v

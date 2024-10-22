@@ -3,12 +3,9 @@ FROM golang:1.23.2 AS builder
 COPY application/app /app
 WORKDIR /app
 RUN go mod download
-RUN go build -o ./app ./src
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o ./app ./src
 
 
-FROM alpine:3.20.3
-WORKDIR /root/
+FROM gcr.io/distroless/static-debian12
 COPY --from=builder /app/app .
-EXPOSE 8081
-
-CMD ["./app"]
+ENTRYPOINT ["/app"]
