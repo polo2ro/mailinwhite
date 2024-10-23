@@ -17,6 +17,12 @@ RUN apk add --no-cache \
 COPY infrastructure/postfix/etc /etc
 COPY infrastructure/postfix/entrypoint.sh /entrypoint.sh
 RUN chmod +x entrypoint.sh
+
+ENV SMTP_HOST=mailcatcher
+ENV SMTP_PORT=1025
+ENV SMTP_LOGIN=""
+ENV SMTP_PASSWORD=""
+
 ENTRYPOINT ["/entrypoint.sh"]
 
 EXPOSE 25
