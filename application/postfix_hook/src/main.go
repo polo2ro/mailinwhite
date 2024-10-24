@@ -22,11 +22,14 @@ const (
 	ldapBindDN   = "cn=admin,dc=example,dc=com"
 	ldapPassword = "adminpassword"
 	ldapBaseDN   = "ou=users,dc=example,dc=com"
-)
 
-const (
-	inspectDir = "/var/spool/filter"
-	sendmail   = "/usr/sbin/sendmail"
+	inspectDir = "/home/filter/spool"
+
+	// Postfix exit codes
+	EX_OK          = 0  // Successful termination
+	EX_TEMPFAIL    = 75 // Temporary failure
+	EX_UNAVAILABLE = 69 // Service unavailable
+	EX_USAGE       = 64 // Command line usage error
 )
 
 // postfix mail filter
@@ -34,13 +37,13 @@ const (
 func filterContent(senderEmail string) error {
 	l, err := ldap.DialURL(ldapServer)
 	if err != nil {
-		log.Fatalf("LDAP serveur connexion error : %v", err)
+		return fmt.Errorf("LDAP serveur connexion error : %w", err)
 	}
 	defer l.Close()
 
 	err = l.Bind(ldapBindDN, ldapPassword)
 	if err != nil {
-		log.Fatalf("LDAP authentication error: %v", err)
+		return fmt.Errorf("LDAP authentication error: %v", err)
 	}
 
 	searchRequest := ldap.NewSearchRequest(
@@ -53,7 +56,7 @@ func filterContent(senderEmail string) error {
 
 	sr, err := l.Search(searchRequest)
 	if err != nil {
-		log.Fatalf("LDAP search error: %v", err)
+		return fmt.Errorf("LDAP search error: %v", err)
 	}
 
 	if len(sr.Entries) == 0 {
@@ -63,28 +66,43 @@ func filterContent(senderEmail string) error {
 	}
 }
 
+func sendTmpFile(tmpFile *os.File, from string) error {
+	args := append([]string{"-G", "-i", "-f", from}, os.Args[3:]...)
+	cmd := exec.Command("/usr/sbin/sendmail", args...)
+	var err error
+	cmd.Stdin, err = os.Open(tmpFile.Name())
+	if err != nil {
+		return err
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("error running sendmail: %w", err)
+	}
+
+	return nil
+}
+
 func main() {
-	// Vérifier les arguments
 	if len(os.Args) < 4 || os.Args[1] != "-f" {
-		fmt.Println("Usage: script -f sender recipients...")
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "Usage: script -f sender recipients...")
+		os.Exit(EX_USAGE)
 	}
 
-	// Changer le répertoire de travail
 	if err := os.Chdir(inspectDir); err != nil {
-		fmt.Printf("%s does not exist\n", inspectDir)
-		os.Exit(75) // EX_TEMPFAIL
+		fmt.Fprintf(os.Stderr, "%s does not exist\n", inspectDir)
+		os.Exit(EX_TEMPFAIL)
 	}
 
-	// Créer un fichier temporaire
+	// Create a temporary file
 	tmpFile, err := os.CreateTemp(inspectDir, "in.")
 	if err != nil {
-		fmt.Println("Cannot create temporary file")
-		os.Exit(75) // EX_TEMPFAIL
+		fmt.Fprintln(os.Stderr, "Cannot create temporary file")
+		os.Exit(EX_TEMPFAIL)
 	}
 	defer os.Remove(tmpFile.Name())
 
-	// Configurer le nettoyage en cas d'interruption
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -93,37 +111,28 @@ func main() {
 		os.Exit(1)
 	}()
 
-	// Copier l'entrée standard dans le fichier temporaire
+	// Copy standard input to the temporary file
 	if _, err := io.Copy(tmpFile, os.Stdin); err != nil {
-		fmt.Println("Cannot save mail to file")
-		os.Exit(75) // EX_TEMPFAIL
+		fmt.Fprintln(os.Stderr, "Cannot save mail to file")
+		os.Exit(EX_TEMPFAIL)
 	}
 
-	// Fermer le fichier pour s'assurer que tout est écrit
 	tmpFile.Close()
+
+	from := os.Args[2]
 
 	// Ici, vous pouvez ajouter votre logique de filtrage personnalisée
 	// Par exemple :
-	if err := filterContent(os.Args[1]); err != nil {
-		fmt.Println("Message content rejected")
-		os.Exit(69) // EX_UNAVAILABLE
+	if err := filterContent(from); err != nil {
+		log.Println(err)
+		// fmt.Fprintf(os.Stderr, "Message rejected: %s\n", err)
+		// os.Exit(EX_UNAVAILABLE)
 	}
 
-	// Préparer les arguments pour sendmail
-	args := append([]string{"-G", "-i"}, os.Args[2:]...)
-
-	// Exécuter sendmail
-	cmd := exec.Command(sendmail, args...)
-	cmd.Stdin, err = os.Open(tmpFile.Name())
-	if err != nil {
-		fmt.Println("Cannot open temporary file")
-		os.Exit(75) // EX_TEMPFAIL
+	if err := sendTmpFile(tmpFile, from); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(EX_TEMPFAIL)
 	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("Error running sendmail: %v\n", err)
-		os.Exit(1)
-	}
+	os.Exit(EX_OK)
 }
