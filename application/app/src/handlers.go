@@ -4,50 +4,79 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-ldap/ldap/v3"
+	"context"
+
 	"github.com/gorilla/mux"
+	"github.com/redis/go-redis/v9"
+
+	"github.com/polo2ro/mailinwhite/libs/contact"
 )
 
 func AcceptHandler(w http.ResponseWriter, r *http.Request) {
-	response := map[string]string{"message": "Accept"}
+	// Parse the POST request body
+	var requestData struct {
+		Mail         string `json:"mail"`
+		CaptchaToken string `json:"captchaToken"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&requestData); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if !verifyCaptcha(requestData.CaptchaToken) {
+		http.Error(w, "Invalid captcha", http.StatusUnauthorized)
+		return
+	}
+
+	// Set the confirmedHuman status in Redis
+	rdb := contact.GetClient()
+	defer rdb.Close()
+	ctx := context.Background()
+
+	err := rdb.Set(ctx, requestData.Mail, contact.StatusConfirmedHuman, 0).Err()
+	if err != nil {
+		http.Error(w, "Failed to set status in Redis", http.StatusInternalServerError)
+		return
+	}
+
+	// Send success response
+	w.Header().Set("Content-Type", "application/json")
+	response := map[string]contact.Status{"status": contact.StatusConfirmedHuman}
 	json.NewEncoder(w).Encode(response)
 }
 
-func getContactHandler(w http.ResponseWriter, r *http.Request) {
-	uid := mux.Vars(r)["uid"]
+// Helper function to verify reCAPTCHA token
+func verifyCaptcha(token string) bool {
+	// TODO: Implement reCAPTCHA verification logic
+	// This should make a request to the reCAPTCHA API and return true if valid
+	return true // Placeholder
+}
 
-	l, err := ldap.DialURL("ldap://openldap:1389")
-	if err != nil {
-		http.Error(w, "LDAP connexion error", http.StatusInternalServerError)
-		return
-	}
-	defer l.Close()
+func getContactStatusHandler(w http.ResponseWriter, r *http.Request) {
+	mail := mux.Vars(r)["mail"]
 
-	searchRequest := ldap.NewSearchRequest(
-		"dc=example,dc=com",
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		"(objectGUID="+uid+")",
-		[]string{"cn", "mail", "telephoneNumber"},
-		nil,
-	)
+	rdb := contact.GetClient()
+	defer rdb.Close()
+	ctx := context.Background()
 
-	sr, err := l.Search(searchRequest)
-	if err != nil {
-		http.Error(w, "LDAP search error", http.StatusInternalServerError)
-		return
-	}
+	var err error
 
-	if len(sr.Entries) != 1 {
+	status, err := rdb.Get(ctx, mail).Result()
+	if err == redis.Nil {
 		http.Error(w, "contact not found", http.StatusNotFound)
 		return
-	}
-
-	contact := map[string]string{
-		"name":  sr.Entries[0].GetAttributeValue("cn"),
-		"email": sr.Entries[0].GetAttributeValue("mail"),
-		"phone": sr.Entries[0].GetAttributeValue("telephoneNumber"),
+	} else if err != nil {
+		http.Error(w, "Redis error", http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(contact)
+	w.WriteHeader(http.StatusOK)
+	response := map[string]string{"status": status}
+	err = json.NewEncoder(w).Encode(response)
+
+	if err != nil {
+		http.Error(w, "json encode error", http.StatusInternalServerError)
+		return
+	}
 }

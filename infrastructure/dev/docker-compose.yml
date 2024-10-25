@@ -1,4 +1,3 @@
-
 services:
   app:
     build:
@@ -40,30 +39,18 @@ services:
     networks:
       - appnet
 
-  openldap:
-    image: bitnami/openldap:2.5.18
-    container_name: mailinwhite-openldap
+  redis:
+    image: redis:7.4.1-alpine
+    container_name: mailinwhite-redis
     ports:
-      - '1389:1389'
-      - '1636:1636'
-    environment:
-      - LDAP_ADMIN_USERNAME=admin
-      - LDAP_ADMIN_PASSWORD=adminpassword
-      - LDAP_USERS=user01,user02
-      - LDAP_PASSWORDS=password1,password2
-    networks:
-      - appnet
+      - '6379:6379'
     volumes:
-      - 'contacts:/bitnami/openldap'
-
-  ldap-ui:
-    image: dnknth/ldap-ui:latest
-    container_name: mailinwhite-ldap-ui
+      - 'mailinwhite-data:/data'
     networks:
       - appnet
       
 volumes:
-  contacts:
+  mailinwhite-data:
     driver: local
 
 networks:

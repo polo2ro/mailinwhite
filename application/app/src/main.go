@@ -10,7 +10,7 @@ import (
 func main() {
 	r := mux.NewRouter()
 
-	r.HandleFunc("/contact/get/{uid}", getContactHandler).Methods("GET")
+	r.HandleFunc("/contact/get/{mail}", getContactStatusHandler).Methods("GET")
 	r.HandleFunc("/contact/accept", AcceptHandler).Methods("POST")
 
 	log.Println("http://localhost:8081")

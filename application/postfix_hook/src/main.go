@@ -5,7 +5,7 @@ package main
 // if contact does not exists or is not approved, send a challenge and postpone the mail in a queue
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -13,16 +13,12 @@ import (
 	"os/exec"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"github.com/go-ldap/ldap/v3"
+	"github.com/polo2ro/mailinwhite/libs/contact"
 )
 
 const (
-	ldapServer   = "ldap://localhost:389"
-	ldapBindDN   = "cn=admin,dc=example,dc=com"
-	ldapPassword = "adminpassword"
-	ldapBaseDN   = "ou=users,dc=example,dc=com"
-
 	inspectDir = "/home/filter/spool"
 
 	// Postfix exit codes
@@ -34,36 +30,30 @@ const (
 
 // postfix mail filter
 // https://www.postfix.org/FILTER_README.html
-func filterContent(senderEmail string) error {
-	l, err := ldap.DialURL(ldapServer)
+func filterContent(senderEmail string, recipientEmail string) error {
+	ctx := context.Background()
+	rdb := contact.GetClient()
+	defer rdb.Close()
+
+	// Check if the email exists in Redis
+	exists, err := rdb.Exists(ctx, senderEmail).Result()
 	if err != nil {
-		return fmt.Errorf("LDAP serveur connexion error : %w", err)
-	}
-	defer l.Close()
-
-	err = l.Bind(ldapBindDN, ldapPassword)
-	if err != nil {
-		return fmt.Errorf("LDAP authentication error: %v", err)
+		return fmt.Errorf("redis error: %w", err)
 	}
 
-	searchRequest := ldap.NewSearchRequest(
-		ldapBaseDN,
-		ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
-		fmt.Sprintf("(mail=%s)", senderEmail),
-		[]string{"dn"},
-		nil,
-	)
+	if exists == 0 {
+		err := rdb.Set(ctx, senderEmail, contact.StatusPending, 6*time.Hour).Err()
+		if err != nil {
+			return fmt.Errorf("failed to create redis entry: %w", err)
+		}
 
-	sr, err := l.Search(searchRequest)
-	if err != nil {
-		return fmt.Errorf("LDAP search error: %v", err)
+		err = sendConfirmationEmail(senderEmail, recipientEmail, "http://app/"+senderEmail)
+		if err != nil {
+			return fmt.Errorf("failed to send captcha challenge by mail: %w", err)
+		}
 	}
 
-	if len(sr.Entries) == 0 {
-		return errors.New("mail address not found")
-	} else {
-		return nil
-	}
+	return nil
 }
 
 func sendTmpFile(tmpFile *os.File, from string) error {
@@ -120,13 +110,14 @@ func main() {
 	tmpFile.Close()
 
 	from := os.Args[2]
+	recipient := os.Args[3]
 
 	// Ici, vous pouvez ajouter votre logique de filtrage personnalisée
 	// Par exemple :
-	if err := filterContent(from); err != nil {
+	if err := filterContent(from, recipient); err != nil {
 		log.Println(err)
-		// fmt.Fprintf(os.Stderr, "Message rejected: %s\n", err)
-		// os.Exit(EX_UNAVAILABLE)
+		fmt.Fprintf(os.Stderr, "Message rejected: %s\n", err)
+		os.Exit(EX_TEMPFAIL)
 	}
 
 	if err := sendTmpFile(tmpFile, from); err != nil {
