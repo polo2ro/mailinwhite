@@ -2,7 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
+	"html/template"
+	"log"
 	"net/http"
+	"strconv"
 
 	"context"
 
@@ -12,7 +17,31 @@ import (
 	"github.com/polo2ro/mailinwhite/libs/contact"
 )
 
-func AcceptHandler(w http.ResponseWriter, r *http.Request) {
+func sendPendingMails(ctx context.Context, senderEmail string) error {
+	rdb := contact.GetMessagesClient()
+	defer rdb.Close()
+
+	senderKey := fmt.Sprintf("sender:%s", senderEmail)
+	messageIDs, err := rdb.SMembers(ctx, senderKey).Result()
+	if err != nil {
+		return fmt.Errorf("failed to get message IDs for sender %s: %w", senderEmail, err)
+	}
+
+	for _, messageID := range messageIDs {
+		if err := contact.SendMessage(ctx, messageID); err != nil {
+			log.Printf("Error sending message %s: %v", messageID, err)
+			continue
+		}
+
+		if err := rdb.SRem(ctx, senderKey, messageID).Err(); err != nil {
+			log.Printf("Error removing message ID %s from sender set: %v", messageID, err)
+		}
+	}
+
+	return nil
+}
+
+func saveChallengePage(w http.ResponseWriter, r *http.Request) {
 	// Parse the POST request body
 	var requestData struct {
 		Mail         string `json:"mail"`
@@ -29,7 +58,7 @@ func AcceptHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set the confirmedHuman status in Redis
-	rdb := contact.GetClient()
+	rdb := contact.GetAddressesClient()
 	defer rdb.Close()
 	ctx := context.Background()
 
@@ -39,9 +68,15 @@ func AcceptHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send the pending mails
+	if err := sendPendingMails(ctx, requestData.Mail); err != nil {
+		log.Printf("Error sending pending mails for %s: %v", requestData.Mail, err)
+		// Note: We continue even if there's an error sending pending mails
+	}
+
 	// Send success response
 	w.Header().Set("Content-Type", "application/json")
-	response := map[string]contact.Status{"status": contact.StatusConfirmedHuman}
+	response := map[string]int{"status": contact.StatusConfirmedHuman}
 	json.NewEncoder(w).Encode(response)
 }
 
@@ -52,31 +87,51 @@ func verifyCaptcha(token string) bool {
 	return true // Placeholder
 }
 
-func getContactStatusHandler(w http.ResponseWriter, r *http.Request) {
-	mail := mux.Vars(r)["mail"]
-
-	rdb := contact.GetClient()
+func getMailStatus(mail string) (int, int, error) {
+	rdb := contact.GetAddressesClient()
 	defer rdb.Close()
 	ctx := context.Background()
 
-	var err error
-
 	status, err := rdb.Get(ctx, mail).Result()
 	if err == redis.Nil {
-		http.Error(w, "contact not found", http.StatusNotFound)
-		return
+		return 0, http.StatusNotFound, errors.New("contact not found")
 	} else if err != nil {
-		http.Error(w, "Redis error", http.StatusInternalServerError)
+		return 0, http.StatusInternalServerError, fmt.Errorf("redis: %w", err)
+	}
+
+	statusInt, err := strconv.Atoi(status)
+	if err != nil {
+		return 0, http.StatusInternalServerError, fmt.Errorf("invalid status format: %w", err)
+	}
+
+	return statusInt, 0, nil
+}
+
+func getChallengePage(w http.ResponseWriter, r *http.Request) {
+	mail := mux.Vars(r)["mail"]
+
+	contactStatus, httpCode, err := getMailStatus(mail)
+	if err != nil {
+		http.Error(w, err.Error(), httpCode)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	response := map[string]string{"status": status}
-	err = json.NewEncoder(w).Encode(response)
+	if contactStatus != contact.StatusPending {
+		http.Error(w, "Invalid contact status", http.StatusBadRequest)
+		return
+	}
 
+	// Load and execute the HTML template
+	tmpl, err := template.ParseFiles("templates/captchaChallenge.html")
 	if err != nil {
-		http.Error(w, "json encode error", http.StatusInternalServerError)
+		http.Error(w, "Template parsing error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	err = tmpl.Execute(w, struct{ Mail string }{Mail: mail})
+	if err != nil {
+		http.Error(w, "Template execution error", http.StatusInternalServerError)
 		return
 	}
 }

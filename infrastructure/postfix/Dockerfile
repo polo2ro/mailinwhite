@@ -1,6 +1,7 @@
 FROM golang:1.23.2 AS builder
 
 COPY application/postfix_hook /postfix_hook
+COPY application/libs /libs
 WORKDIR /postfix_hook
 RUN go mod download
 RUN go build -o ./postfix_hook ./src
@@ -9,7 +10,6 @@ RUN go build -o ./postfix_hook ./src
 FROM alpine:3.20.3
 RUN addgroup filter
 RUN adduser -S -h /home/filter -G filter filter
-RUN mkdir -p /home/filter/spool && chown filter:filter /home/filter/spool && chmod 700 /home/filter/spool
 COPY --from=builder /postfix_hook/postfix_hook /home/filter
 COPY infrastructure/postfix/home/filter/test_postfix_hook.sh /home/filter
 RUN chown filter:filter /home/filter/postfix_hook

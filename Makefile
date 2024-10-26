@@ -24,5 +24,9 @@ down: ## Down all containers and volumes
 	$(DKC) kill
 	$(DKC) down -v
 
+test_mail: ## test mail
+	bash tools/test_mail.sh 
+	docker logs mailinwhite-postfix
+
 %:
 	@:

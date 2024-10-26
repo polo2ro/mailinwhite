@@ -1,8 +1,6 @@
 package contact
 
-type Status int
-
 const (
-	StatusPending        Status = 1
-	StatusConfirmedHuman Status = 2
+	StatusPending        = 1
+	StatusConfirmedHuman = 2
 )

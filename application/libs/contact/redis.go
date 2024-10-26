@@ -5,11 +5,26 @@ import (
 )
 
 var redisAddr = "redis:6379"
-var redisDB = 0
+var redisDbAddresses = 0
+var redisDbMessages = 1
 
-func GetClient() *redis.Client {
+func GetAddressesClient() *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr: redisAddr,
-		DB:   redisDB,
+		DB:   redisDbAddresses,
 	})
+}
+
+func GetMessagesClient() *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: redisAddr,
+		DB:   redisDbMessages,
+	})
+}
+
+// structure for message storage in redisDbMessages
+type MessageData struct {
+	Content []byte   `json:"content"`
+	From    string   `json:"from"`
+	To      []string `json:"to"`
 }

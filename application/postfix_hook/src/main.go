@@ -6,21 +6,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"os"
-	"os/exec"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/polo2ro/mailinwhite/libs/contact"
+	"github.com/redis/go-redis/v9"
 )
 
 const (
-	inspectDir = "/home/filter/spool"
-
 	// Postfix exit codes
 	EX_OK          = 0  // Successful termination
 	EX_TEMPFAIL    = 75 // Temporary failure
@@ -32,7 +29,7 @@ const (
 // https://www.postfix.org/FILTER_README.html
 func filterContent(senderEmail string, recipientEmail string) error {
 	ctx := context.Background()
-	rdb := contact.GetClient()
+	rdb := contact.GetAddressesClient()
 	defer rdb.Close()
 
 	// Check if the email exists in Redis
@@ -56,19 +53,40 @@ func filterContent(senderEmail string, recipientEmail string) error {
 	return nil
 }
 
-func sendTmpFile(tmpFile *os.File, from string) error {
-	args := append([]string{"-G", "-i", "-f", from}, os.Args[3:]...)
-	cmd := exec.Command("/usr/sbin/sendmail", args...)
-	var err error
-	cmd.Stdin, err = os.Open(tmpFile.Name())
-	if err != nil {
-		return err
-	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+func storeMessageInRedis(ctx context.Context, messageID string, from string, to []string, messageContent []byte) error {
+	rdb := contact.GetMessagesClient()
+	defer rdb.Close()
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("error running sendmail: %w", err)
+	messageData := contact.MessageData{
+		Content: messageContent,
+		From:    from,
+		To:      to,
+	}
+
+	jsonData, err := json.Marshal(messageData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message data: %w", err)
+	}
+
+	_, err = rdb.TxPipelined(ctx, func(pipe redis.Pipeliner) error {
+		if err := pipe.Set(ctx, messageID, jsonData, 24*time.Hour).Err(); err != nil {
+			return fmt.Errorf("failed to store message in Redis: %w", err)
+		}
+
+		senderKey := fmt.Sprintf("sender:%s", from)
+		if err := pipe.SAdd(ctx, senderKey, messageID).Err(); err != nil {
+			return fmt.Errorf("failed to add message to sender's set: %w", err)
+		}
+
+		if err := pipe.Expire(ctx, senderKey, 24*time.Hour).Err(); err != nil {
+			return fmt.Errorf("failed to set expiration for sender's set: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to execute Redis transaction: %w", err)
 	}
 
 	return nil
@@ -80,47 +98,36 @@ func main() {
 		os.Exit(EX_USAGE)
 	}
 
-	if err := os.Chdir(inspectDir); err != nil {
-		fmt.Fprintf(os.Stderr, "%s does not exist\n", inspectDir)
-		os.Exit(EX_TEMPFAIL)
-	}
-
-	// Create a temporary file
-	tmpFile, err := os.CreateTemp(inspectDir, "in.")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Cannot create temporary file")
-		os.Exit(EX_TEMPFAIL)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		os.Remove(tmpFile.Name())
-		os.Exit(1)
-	}()
-
-	// Copy standard input to the temporary file
-	if _, err := io.Copy(tmpFile, os.Stdin); err != nil {
-		fmt.Fprintln(os.Stderr, "Cannot save mail to file")
-		os.Exit(EX_TEMPFAIL)
-	}
-
-	tmpFile.Close()
-
 	from := os.Args[2]
-	recipient := os.Args[3]
+	recipients := os.Args[3:]
+
+	ctx := context.Background()
+
+	// Generate a unique message ID
+	messageID := fmt.Sprintf("msg_%d", time.Now().UnixNano())
+
+	// Read the entire message content
+	messageContent, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Cannot read message content")
+		os.Exit(EX_TEMPFAIL)
+	}
+
+	// Store the message in Redis
+	if err := storeMessageInRedis(ctx, messageID, from, recipients, messageContent); err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(EX_TEMPFAIL)
+	}
 
 	// Ici, vous pouvez ajouter votre logique de filtrage personnalisée
 	// Par exemple :
-	if err := filterContent(from, recipient); err != nil {
+	if err := filterContent(from, recipients[0]); err != nil {
 		log.Println(err)
 		fmt.Fprintf(os.Stderr, "Message rejected: %s\n", err)
 		os.Exit(EX_TEMPFAIL)
 	}
 
-	if err := sendTmpFile(tmpFile, from); err != nil {
+	if err := contact.SendMessage(ctx, messageID); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(EX_TEMPFAIL)
 	}
