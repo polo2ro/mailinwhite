@@ -4,8 +4,6 @@ services:
       context: ../../
       dockerfile: infrastructure/app/Dockerfile
     container_name: mailinwhite-app
-    ports:
-      - '8081:8081'
     networks:
       - appnet
 
@@ -14,6 +12,7 @@ services:
     container_name: mailinwhite-nginx
     volumes:
       - ../../public:/var/www/html
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf
     ports:
       - '8080:80'
     depends_on:
