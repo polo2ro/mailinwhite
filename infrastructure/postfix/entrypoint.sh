@@ -27,5 +27,7 @@ update_main_cf smtpd_sasl_local_domain "\$myhostname"
 update_main_cf smtpd_recipient_restrictions "permit_mynetworks,permit_sasl_authenticated,reject_unauth_destination"
 update_main_cf mynetworks "127.0.0.0/8, 172.20.0.0/16"
 
+export -p > /home/filter/.env && chown filter:filter /home/filter/.env
+
 /usr/sbin/postfix -c /etc/postfix start-fg
 

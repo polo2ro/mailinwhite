@@ -3,6 +3,7 @@ module github.com/polo2ro/mailinwhite/postfix_hook
 go 1.23.1
 
 require (
+	github.com/joho/godotenv v1.5.1
 	github.com/polo2ro/mailinwhite/libs v0.0.0
 	github.com/redis/go-redis/v9 v9.7.0
 )

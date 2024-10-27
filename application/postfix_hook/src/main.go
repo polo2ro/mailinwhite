@@ -9,8 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/polo2ro/mailinwhite/libs/contact"
@@ -27,30 +28,34 @@ const (
 
 // postfix mail filter
 // https://www.postfix.org/FILTER_README.html
-func filterContent(senderEmail string, recipientEmail string) error {
+func getSenderAddressStatus(senderEmail string) (int, error) {
 	ctx := context.Background()
 	rdb := contact.GetAddressesClient()
 	defer rdb.Close()
 
 	// Check if the email exists in Redis
-	exists, err := rdb.Exists(ctx, senderEmail).Result()
-	if err != nil {
-		return fmt.Errorf("redis error: %w", err)
+	statusStr, err := rdb.Get(ctx, senderEmail).Result()
+	if err != nil && err != redis.Nil {
+		return 0, fmt.Errorf("redis error: %w", err)
 	}
 
-	if exists == 0 {
-		err := rdb.Set(ctx, senderEmail, contact.StatusPending, 6*time.Hour).Err()
+	var status int
+	if err == redis.Nil {
+		// Email doesn't exist, create new entry with StatusPending
+		err = rdb.Set(ctx, senderEmail, contact.StatusPending, 6*time.Hour).Err()
 		if err != nil {
-			return fmt.Errorf("failed to create redis entry: %w", err)
+			return 0, fmt.Errorf("failed to create redis entry: %w", err)
 		}
 
-		err = sendConfirmationEmail(senderEmail, recipientEmail, "http://app/"+senderEmail)
+		status = contact.StatusPending
+	} else {
+		status, err = strconv.Atoi(statusStr)
 		if err != nil {
-			return fmt.Errorf("failed to send captcha challenge by mail: %w", err)
+			return 0, fmt.Errorf("invalid status format: %w", err)
 		}
 	}
 
-	return nil
+	return status, nil
 }
 
 func storeMessageInRedis(ctx context.Context, messageID string, from string, to []string, messageContent []byte) error {
@@ -119,11 +124,20 @@ func main() {
 		os.Exit(EX_TEMPFAIL)
 	}
 
-	// Ici, vous pouvez ajouter votre logique de filtrage personnalisée
-	// Par exemple :
-	if err := filterContent(from, recipients[0]); err != nil {
-		log.Println(err)
+	addressStatus, err := getSenderAddressStatus(from)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Message rejected: %s\n", err)
+		os.Exit(EX_TEMPFAIL)
+	}
+
+	if addressStatus == contact.StatusPending {
+		err = sendChallengeRequestEmail(from, recipients[0], "http://localhost:8080/app/challenge/"+url.QueryEscape(from))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to send captcha challenge by mail: %s", err)
+			os.Exit(EX_TEMPFAIL)
+		}
+
+		fmt.Fprintf(os.Stderr, "Sender address %s is pending\n", from)
 		os.Exit(EX_TEMPFAIL)
 	}
 

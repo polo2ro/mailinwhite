@@ -11,6 +11,7 @@ FROM alpine:3.20.3
 RUN addgroup filter
 RUN adduser -S -h /home/filter -G filter filter
 COPY --from=builder /postfix_hook/postfix_hook /home/filter
+COPY --from=builder /postfix_hook/templates /home/filter/templates
 COPY infrastructure/postfix/home/filter/test_postfix_hook.sh /home/filter
 RUN chown filter:filter /home/filter/postfix_hook
 RUN chown filter:filter /home/filter/test_postfix_hook.sh && chmod +x /home/filter/test_postfix_hook.sh
