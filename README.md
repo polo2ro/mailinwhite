@@ -19,9 +19,9 @@ MX -> mailinwhite -> SMTP server
 
 mailinwhite process a new mail with unknow sender:
 
-# the mail is stored in redis
-# a link is sent by mail to the sender
-# the sender submit captcha, then the mail is delivered
+* the mail is stored in redis
+* a link is sent by mail to the sender
+* the sender submit captcha, then the mail is delivered
 
 mailinwhite process a new mail with existing sender:
 
