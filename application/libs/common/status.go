@@ -1,4 +1,4 @@
-package contact
+package common
 
 const (
 	StatusPending        = 1

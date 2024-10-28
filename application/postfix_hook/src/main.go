@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/polo2ro/mailinwhite/libs/contact"
+	"github.com/polo2ro/mailinwhite/libs/common"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -30,7 +30,7 @@ const (
 // https://www.postfix.org/FILTER_README.html
 func getSenderAddressStatus(senderEmail string) (int, error) {
 	ctx := context.Background()
-	rdb := contact.GetAddressesClient()
+	rdb := common.GetAddressesClient()
 	defer rdb.Close()
 
 	// Check if the email exists in Redis
@@ -42,12 +42,12 @@ func getSenderAddressStatus(senderEmail string) (int, error) {
 	var status int
 	if err == redis.Nil {
 		// Email doesn't exist, create new entry with StatusPending
-		err = rdb.Set(ctx, senderEmail, contact.StatusPending, 6*time.Hour).Err()
+		err = rdb.Set(ctx, senderEmail, common.StatusPending, 6*time.Hour).Err()
 		if err != nil {
 			return 0, fmt.Errorf("failed to create redis entry: %w", err)
 		}
 
-		status = contact.StatusPending
+		status = common.StatusPending
 	} else {
 		status, err = strconv.Atoi(statusStr)
 		if err != nil {
@@ -59,10 +59,10 @@ func getSenderAddressStatus(senderEmail string) (int, error) {
 }
 
 func storeMessageInRedis(ctx context.Context, messageID string, from string, to []string, messageContent []byte) error {
-	rdb := contact.GetMessagesClient()
+	rdb := common.GetMessagesClient()
 	defer rdb.Close()
 
-	messageData := contact.MessageData{
+	messageData := common.MessageData{
 		Content: messageContent,
 		From:    from,
 		To:      to,
@@ -130,18 +130,18 @@ func main() {
 		os.Exit(EX_TEMPFAIL)
 	}
 
-	if addressStatus == contact.StatusPending {
-		err = sendChallengeRequestEmail(from, recipients[0], "http://localhost:8080/app/challenge/"+url.QueryEscape(from))
+	if addressStatus == common.StatusPending {
+		err = sendChallengeRequestEmail(from, recipients, "http://localhost:8080/app/challenge/"+url.QueryEscape(from))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to send captcha challenge by mail: %s", err)
 			os.Exit(EX_TEMPFAIL)
 		}
 
 		fmt.Fprintf(os.Stderr, "Sender address %s is pending\n", from)
-		os.Exit(EX_TEMPFAIL)
+		os.Exit(EX_OK)
 	}
 
-	if err := contact.SendMessage(ctx, messageID); err != nil {
+	if err := sendMessage(ctx, messageID); err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
 		os.Exit(EX_TEMPFAIL)
 	}

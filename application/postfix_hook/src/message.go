@@ -1,17 +1,18 @@
-package contact
+package main
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
+
+	"github.com/polo2ro/mailinwhite/libs/common"
 )
 
-func SendMessage(ctx context.Context, messageID string) error {
-	rdb := GetMessagesClient()
+func sendMessage(ctx context.Context, messageID string) error {
+	rdb := common.GetMessagesClient()
 	defer rdb.Close()
 
 	jsonData, err := rdb.Get(ctx, messageID).Bytes()
@@ -19,7 +20,7 @@ func SendMessage(ctx context.Context, messageID string) error {
 		return fmt.Errorf("failed to retrieve message from Redis: %w", err)
 	}
 
-	var messageData MessageData
+	var messageData common.MessageData
 	if err := json.Unmarshal(jsonData, &messageData); err != nil {
 		return fmt.Errorf("failed to unmarshal message data: %w", err)
 	}
@@ -36,7 +37,7 @@ func SendMessage(ctx context.Context, messageID string) error {
 
 	// Delete the message from Redis after sending
 	if err := rdb.Del(ctx, messageID).Err(); err != nil {
-		log.Printf("Warning: failed to delete message %s from Redis: %v", messageID, err)
+		return fmt.Errorf("warning: failed to delete message %s from Redis: %v", messageID, err)
 	}
 
 	return nil

@@ -1,4 +1,4 @@
-package contact
+package common
 
 import (
 	"github.com/redis/go-redis/v9"

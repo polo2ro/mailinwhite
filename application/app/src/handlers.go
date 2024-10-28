@@ -1,45 +1,17 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"os"
-	"strconv"
 
 	"context"
 
 	"github.com/gorilla/mux"
-	"github.com/redis/go-redis/v9"
 
-	"github.com/polo2ro/mailinwhite/libs/contact"
+	"github.com/polo2ro/mailinwhite/libs/common"
 )
-
-func sendPendingMails(ctx context.Context, senderEmail string) error {
-	rdb := contact.GetMessagesClient()
-	defer rdb.Close()
-
-	senderKey := fmt.Sprintf("sender:%s", senderEmail)
-	messageIDs, err := rdb.SMembers(ctx, senderKey).Result()
-	if err != nil {
-		return fmt.Errorf("failed to get message IDs for sender %s: %w", senderEmail, err)
-	}
-
-	for _, messageID := range messageIDs {
-		if err := contact.SendMessage(ctx, messageID); err != nil {
-			return fmt.Errorf("error sending message %s: %w", messageID, err)
-		}
-
-		if err := rdb.SRem(ctx, senderKey, messageID).Err(); err != nil {
-			return fmt.Errorf("error removing message ID %s from sender set: %v", messageID, err)
-		}
-	}
-
-	return nil
-}
 
 func saveChallengePage(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -54,11 +26,11 @@ func saveChallengePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rdb := contact.GetAddressesClient()
+	rdb := common.GetAddressesClient()
 	defer rdb.Close()
 	ctx := context.Background()
 
-	err := rdb.Set(ctx, mail, contact.StatusConfirmedHuman, 0).Err()
+	err := rdb.Set(ctx, mail, common.StatusConfirmedHuman, 0).Err()
 	if err != nil {
 		http.Error(w, "Failed to set status in Redis", http.StatusInternalServerError)
 		return
@@ -72,49 +44,6 @@ func saveChallengePage(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/app/success", http.StatusSeeOther)
 }
 
-// Helper function to verify reCAPTCHA token
-func verifyCaptcha(token string) bool {
-	url := fmt.Sprintf("https://www.google.com/recaptcha/api/siteverify?secret=%s&response=%s", os.Getenv("RECAPTCHA_SECRET"), token)
-
-	resp, err := http.Post(url, "application/x-www-form-urlencoded", nil)
-	if err != nil {
-		log.Printf("Error making request to reCAPTCHA: %v", err)
-		return false
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Success bool     `json:"success"`
-		Errors  []string `json:"error-codes"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		log.Printf("Error decoding reCAPTCHA response: %v", err)
-		return false
-	}
-
-	return result.Success
-}
-
-func getMailStatus(mail string) (int, int, error) {
-	rdb := contact.GetAddressesClient()
-	defer rdb.Close()
-	ctx := context.Background()
-
-	status, err := rdb.Get(ctx, mail).Result()
-	if err == redis.Nil {
-		return 0, http.StatusNotFound, errors.New("contact not found")
-	} else if err != nil {
-		return 0, http.StatusInternalServerError, fmt.Errorf("redis: %w", err)
-	}
-
-	statusInt, err := strconv.Atoi(status)
-	if err != nil {
-		return 0, http.StatusInternalServerError, fmt.Errorf("invalid status format: %w", err)
-	}
-
-	return statusInt, 0, nil
-}
-
 func getChallengePage(w http.ResponseWriter, r *http.Request) {
 	mail := mux.Vars(r)["mail"]
 
@@ -124,7 +53,7 @@ func getChallengePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if contactStatus != contact.StatusPending {
+	if contactStatus != common.StatusPending {
 		http.Error(w, "Invalid contact status", http.StatusBadRequest)
 		return
 	}

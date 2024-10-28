@@ -26,18 +26,11 @@ COPY infrastructure/postfix/etc /etc
 COPY infrastructure/postfix/entrypoint.sh /entrypoint.sh
 RUN chmod +x entrypoint.sh
 
-# Target SMTP server
-ENV SMTP_HOST=mailcatcher
-ENV SMTP_PORT=1025
-ENV SMTP_LOGIN=""
-ENV SMTP_PASSWORD=""
-
 ENV MYHOSTNAME="host.example.com"
 
 # to require TLS by the target SMTP server: "encrypt" 
 # for mailcatcher, use "may"
 ENV SECURITY_LEVEL="may"
-
 
 ENTRYPOINT ["/entrypoint.sh"]
 

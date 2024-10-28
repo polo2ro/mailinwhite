@@ -3,30 +3,16 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"net/smtp"
-	"strconv"
+	"os"
+	"os/exec"
 
 	"html/template"
 
-	"github.com/joho/godotenv"
+	"github.com/polo2ro/mailinwhite/libs/common"
 )
 
-// sendChallengeRequestEmail sends an HTML email with a confirmation link to verify the sender is human
-func sendChallengeRequestEmail(senderEmail string, recipientEmail string, confirmationLink string) error {
-	envFile, err := godotenv.Read("/home/filter/.env")
-	if err != nil {
-		return fmt.Errorf("read env file: %w", err)
-	}
-
-	smtpPort, err := strconv.Atoi(envFile["SMTP_PORT"])
-	if err != nil {
-		return fmt.Errorf("port int conversion: %w", err)
-	}
-
-	if envFile["SMTP_HOST"] == "" || smtpPort == 0 {
-		return fmt.Errorf("missing required SMTP configuration environment variables")
-	}
-
+// sends an HTML email with a confirmation link to verify the sender is human
+func sendChallengeRequestEmail(senderEmail string, recipients []string, confirmationLink string) error {
 	subject := "Confirm Your Humanity to Deliver Your Message"
 
 	// Load the HTML template
@@ -42,7 +28,7 @@ func sendChallengeRequestEmail(senderEmail string, recipientEmail string, confir
 		ConfirmationLink string
 	}{
 		SenderEmail:      senderEmail,
-		RecipientEmail:   recipientEmail,
+		RecipientEmail:   fmt.Sprintf("%v", common.GetValidRecipients(recipients)),
 		ConfirmationLink: confirmationLink,
 	}
 
@@ -60,18 +46,14 @@ func sendChallengeRequestEmail(senderEmail string, recipientEmail string, confir
 		"\r\n"+
 		"%s", senderEmail, subject, htmlBody))
 
-	from := "mailinwhite@example.com"
-	addr := fmt.Sprintf("%s:%d", envFile["SMTP_HOST"], smtpPort)
-	var smtpErr error
-	if envFile["SMTP_LOGIN"] != "" {
-		auth := smtp.PlainAuth("", envFile["SMTP_LOGIN"], envFile["SMTP_PASSWORD"], envFile["SMTP_HOST"])
-		smtpErr = smtp.SendMail(addr, auth, from, []string{senderEmail}, message)
-	} else {
-		smtpErr = smtp.SendMail(addr, nil, from, []string{senderEmail}, message)
-	}
+	args := append([]string{"-G", "-i", "-f", senderEmail}, recipients...)
+	cmd := exec.Command("/usr/sbin/sendmail", args...)
+	cmd.Stdin = bytes.NewReader(message)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-	if smtpErr != nil {
-		return fmt.Errorf("failed to send confirmation email: %v", smtpErr)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to send challenge email: %v", err)
 	}
 
 	return nil

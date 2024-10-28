@@ -3,9 +3,13 @@ services:
     build:
       context: ../../
       dockerfile: infrastructure/app/Dockerfile
-      args:
-        RECAPTCHA_SITE: ${RECAPTCHA_SITE}
-        RECAPTCHA_SECRET: ${RECAPTCHA_SECRET}
+    environment:
+      - RECAPTCHA_SITE
+      - RECAPTCHA_SECRET
+      - SMTP_HOST
+      - SMTP_PORT
+      - SMTP_LOGIN
+      - SMTP_PASSWORD
     container_name: mailinwhite-app
     networks:
       - appnet
@@ -27,6 +31,11 @@ services:
     build:
       context: ../../
       dockerfile: infrastructure/postfix/Dockerfile
+    environment:
+      - SMTP_HOST
+      - SMTP_PORT
+      - SMTP_LOGIN
+      - SMTP_PASSWORD
     container_name: mailinwhite-postfix
     ports:
        - '2025:25'
@@ -37,7 +46,7 @@ services:
     image: jeanberu/mailcatcher:0.10.0
     container_name: mailinwhite-mailcatcher
     ports:
-       - '8082:1080'
+       - '8081:1080'
     networks:
       - appnet
 
