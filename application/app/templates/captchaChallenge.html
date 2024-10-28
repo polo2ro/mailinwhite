@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Captcha Challenge</title>
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -54,29 +55,14 @@
             Your email from <strong>{{.Mail}}</strong> 
             requires verification before delivery. Please complete the captcha below to proceed.
         </p>
-        <div id="captcha-container">
-            <!-- Captcha will be inserted here -->
-        </div>
-        <button onclick="verifyCaptcha()">Verify and Send</button>
+
+        <form action="?" method="POST">
+            <input type="hidden" name="mail" value="{{.Mail}}" />
+            <div class="g-recaptcha" data-sitekey="{{.RecaptchaSite}}"></div>
+            <br/>
+            <input type="submit" value="Submit">
+        </form>
     </div>
-
-    <script>
-        // Function to load and display the captcha
-        function loadCaptcha() {
-            // Implement captcha loading logic here
-            // This could involve calling an API to get a new captcha challenge
-        }
-
-        // Function to verify the captcha
-        function verifyCaptcha() {
-            // Implement captcha verification logic here
-            // This could involve sending the user's response to a server for validation
-            // On success, you might redirect the user or show a success message
-        }
-
-        // Load the captcha when the page loads
-        window.onload = loadCaptcha;
-    </script>
 </body>
 </html>
 

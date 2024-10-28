@@ -3,7 +3,7 @@
 set -e
 
 # Configuration
-from_address="sender@example.com"
+from_address="sender4@example.com"
 to_address="recipient@example.com"
 smtp_server="127.0.0.1"
 smtp_port="2025"
