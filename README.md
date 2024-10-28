@@ -29,7 +29,7 @@ mailinwhite process a new mail with existing sender:
 * if the sender has not yet validated the captcha, a new link is sent by mail to the sender, all the pending emails will be sent upon validation
 
 
-## Developpment
+## Development
 
 This project use docker compose and make, to start use:
 
