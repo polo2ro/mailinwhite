@@ -1,37 +1,33 @@
 # mailinwhite
-open source anti spam with captcha challenge
 
-## how it work?
+open source anti-spam with CAPTCHA challenge
 
-this a postfix relay, you have to configure a domain MX to this server and set another smtp for delivery, the app will maintain a list of known contacts with a "human" status and require a captcha resolution from the sender to proceed for delivery.
+## How it works
 
-before:
+This is a Postfix relay. You have to configure a domain MX to this server and set another SMTP for delivery. The app will maintain a list of known contacts with a "human" status and require a CAPTCHA resolution from the sender to proceed for delivery.
+
+Before:
 
 MX -> SMTP server
 
-
-after:
+After:
 
 MX -> mailinwhite -> SMTP server
 
+mailinwhite processes a new mail with unknown sender:
 
+* The mail is stored in Redis
+* A link is sent by mail to the sender
+* The sender submits CAPTCHA, then the mail is delivered
 
+mailinwhite processes a new mail with existing sender:
 
-mailinwhite process a new mail with unknow sender:
-
-* the mail is stored in redis
-* a link is sent by mail to the sender
-* the sender submit captcha, then the mail is delivered
-
-mailinwhite process a new mail with existing sender:
-
-* if the sender has already validated a captcha, the mail is delivered to the next smtp server
-* if the sender has not yet validated the captcha, a new link is sent by mail to the sender, all the pending emails will be sent upon validation
-
+* If the sender has already validated a CAPTCHA, the mail is delivered to the next SMTP server
+* If the sender has not yet validated the CAPTCHA, a new link is sent by mail to the sender; all the pending emails will be sent upon validation
 
 ## Development
 
-This project use docker compose and make, to start use:
+This project uses Docker Compose and Make. To start, use:
 
 ```bash
 make install
@@ -39,12 +35,11 @@ make install
 make build
 
 make run
-
 ```
 
-open the fake smtp receiver on url http://localhost:8081
+Open the fake SMTP receiver on URL http://localhost:8081 
 
-send a fake mail:
+Send a fake mail:
 
 ```bash
 make test_mail
